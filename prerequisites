@@ -1,0 +1,6 @@
+Project Title : Password Generator
+Team Members : Visali, Divya. Prathyusha, Kanaka DUrga, CHarishma, Lahari
+About Project : This is an offline strongest password generator.
+                user should enter a base word and can select the lengyth of the password as per requirement(Min 4, Max 32).
+                Tick the check boxes as per requirement. User can regerate the password if needed and also can undo it.
+                The detailes are logged and can be viewed using view History button.
