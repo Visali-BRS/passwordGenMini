@@ -2,12 +2,14 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.datatransfer.StringSelection;
-import java.util.Random;
+import java.util.*;
+import java.util.logging.*;
+import java.io.*;
 
 public class MyPasswordApp extends JFrame implements ActionListener {
 
     JTextField passwordField, baseWordField;
-    JButton generateButton, copyButton, themeToggleButton;
+    JButton generateButton, copyButton, themeToggleButton, historyButton, undoButton;
     JCheckBox upperCaseCheck, lowerCaseCheck, numberCheck, symbolCheck, customWordCheck;
     JSpinner lengthSpinner;
     JLabel strengthLabel;
@@ -19,140 +21,152 @@ public class MyPasswordApp extends JFrame implements ActionListener {
     Color fgLight = Color.BLACK;
     Color accentDark = new Color(102, 204, 255);
     Color accentLight = new Color(0, 102, 204);
-
     JPanel mainPanel;
+
+    ArrayList<String> passwordHistory = new ArrayList<>();
+    Stack<String> undoStack = new Stack<>();
+    Logger logger = Logger.getLogger(MyPasswordApp.class.getName());
 
     public MyPasswordApp() {
         setTitle("Password Generator");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(700, 650);
+        setSize(600, 650);
         setLocationRelativeTo(null);
 
         mainPanel = new JPanel(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(10, 10, 10, 10);
+        gbc.fill = GridBagConstraints.HORIZONTAL; // allow components to stretch
+        gbc.weightx = 1;
 
-        themeToggleButton = new JButton("Switch to Light Theme");
+        // Theme toggle button
+        themeToggleButton = new JButton("🌙 Switch to Light Theme");
         themeToggleButton.setFocusPainted(false);
         themeToggleButton.addActionListener(e -> toggleTheme());
         gbc.gridx = 0; gbc.gridy = 0; gbc.gridwidth = 2;
         mainPanel.add(themeToggleButton, gbc);
 
-        JLabel title = new JLabel("Secure Password Generator");
-        title.setFont(new Font("SansSerif", Font.BOLD, 24));
+        // Title
+        JLabel title = new JLabel("Password Generator", SwingConstants.CENTER);
+        title.setFont(new Font("SansSerif", Font.BOLD, 22));
         gbc.gridy = 1;
         mainPanel.add(title, gbc);
 
+        // Password Length Label
         gbc.gridwidth = 1; gbc.gridy = 2; gbc.gridx = 0;
         JLabel lengthLabel = new JLabel("Password Length:");
         mainPanel.add(lengthLabel, gbc);
 
+        // Spinner for length
         lengthSpinner = new JSpinner(new SpinnerNumberModel(12, 4, 32, 1));
-        lengthSpinner.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        lengthSpinner.setPreferredSize(new Dimension(200, 30)); // make wider
         gbc.gridx = 1;
         mainPanel.add(lengthSpinner, gbc);
 
+        // Base word field
         gbc.gridx = 0; gbc.gridy = 3;
         JLabel baseLabel = new JLabel("Enter Base Word:");
         mainPanel.add(baseLabel, gbc);
 
-        baseWordField = new JTextField(15);
-        baseWordField.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        baseWordField = new JTextField();
+        baseWordField.setPreferredSize(new Dimension(200, 30)); // make wider
         gbc.gridx = 1;
         mainPanel.add(baseWordField, gbc);
 
+        // Checkboxes
         gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2;
         customWordCheck = createCheckBox("Use custom word in password");
         mainPanel.add(customWordCheck, gbc);
 
-        gbc.gridy = 5;
+        gbc.gridy++;
         upperCaseCheck = createCheckBox("Include Uppercase (A-Z)");
         mainPanel.add(upperCaseCheck, gbc);
 
-        gbc.gridy = 6;
+        gbc.gridy++;
         lowerCaseCheck = createCheckBox("Include Lowercase (a-z)");
         mainPanel.add(lowerCaseCheck, gbc);
 
-        gbc.gridy = 7;
+        gbc.gridy++;
         numberCheck = createCheckBox("Include Numbers (0-9)");
         mainPanel.add(numberCheck, gbc);
 
-        gbc.gridy = 8;
+        gbc.gridy++;
         symbolCheck = createCheckBox("Include Symbols (!@#$)");
         mainPanel.add(symbolCheck, gbc);
 
+        // Generate button
         generateButton = new JButton("Generate Password");
-        generateButton.setFont(new Font("SansSerif", Font.BOLD, 16));
+        generateButton.setPreferredSize(new Dimension(200, 35));
         generateButton.addActionListener(this);
-        gbc.gridy = 9;
+        gbc.gridy++;
         mainPanel.add(generateButton, gbc);
 
-        passwordField = new JTextField(25);
+        // Password field
+        passwordField = new JTextField();
         passwordField.setFont(new Font("Courier New", Font.BOLD, 16));
         passwordField.setEditable(false);
-        gbc.gridy = 10; gbc.fill = GridBagConstraints.HORIZONTAL;
+        passwordField.setPreferredSize(new Dimension(300, 35));
+        gbc.gridy++;
         mainPanel.add(passwordField, gbc);
-        gbc.fill = GridBagConstraints.NONE;
 
+        // Copy button
         copyButton = new JButton("Copy to Clipboard");
-        copyButton.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        copyButton.addActionListener(e -> {
-            StringSelection selection = new StringSelection(passwordField.getText());
-            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, null);
-            JOptionPane.showMessageDialog(this, "Password copied to clipboard!");
-        });
-        gbc.gridy = 11;
+        copyButton.setPreferredSize(new Dimension(200, 35));
+        copyButton.addActionListener(e -> copyToClipboard());
+        gbc.gridy++;
         mainPanel.add(copyButton, gbc);
 
+        // Undo button
+        undoButton = new JButton("Undo Password");
+        undoButton.setPreferredSize(new Dimension(200, 35));
+        undoButton.addActionListener(e -> undoPassword());
+        gbc.gridy++;
+        mainPanel.add(undoButton, gbc);
+
+        // Strength label
         strengthLabel = new JLabel(" ");
         strengthLabel.setFont(new Font("SansSerif", Font.ITALIC, 14));
-        gbc.gridy = 12;
+        gbc.gridy++;
         mainPanel.add(strengthLabel, gbc);
+
+        // Show history button
+        historyButton = new JButton("Show History");
+        historyButton.setPreferredSize(new Dimension(200, 35));
+        historyButton.addActionListener(e -> showHistory());
+        gbc.gridy++;
+        mainPanel.add(historyButton, gbc);
 
         applyTheme();
         add(mainPanel);
         setVisible(true);
-    }
 
-    private void toggleTheme() {
-        darkTheme = !darkTheme;
-        applyTheme();
-    }
-
-    private void applyTheme() {
-        Color bg = darkTheme ? bgDark : bgLight;
-        Color fg = darkTheme ? fgDark : fgLight;
-        Color accent = darkTheme ? accentDark : accentLight;
-
-        mainPanel.setBackground(bg);
-        for (Component comp : mainPanel.getComponents()) {
-            comp.setBackground(bg);
-            comp.setForeground(fg);
-            if (comp instanceof JButton) {
-                comp.setForeground(fg);
-                comp.setBackground(accent);
-            }
-            if (comp instanceof JCheckBox) {
-                comp.setForeground(fg);
-            }
-        }
-
-        themeToggleButton.setText(darkTheme ? "🌞 Switch to Light Theme" : "🌙 Switch to Dark Theme");
-    }
-
-    private JCheckBox createCheckBox(String text) {
-        JCheckBox cb = new JCheckBox(text);
-        cb.setFont(new Font("SansSerif", Font.PLAIN, 14));
-        cb.setSelected(true);
-        return cb;
+        setupLogger();
     }
 
     @Override
     public void actionPerformed(ActionEvent e) {
-        int length = (Integer) lengthSpinner.getValue();
-        String base = baseWordField.getText().trim();
-        boolean useCustom = customWordCheck.isSelected();
+        try {
+            int length = (Integer) lengthSpinner.getValue();
+            String base = baseWordField.getText().trim();
+            boolean useCustom = customWordCheck.isSelected();
 
+            String generatedPassword = generatePassword(length, base, useCustom);
+            passwordField.setText(generatedPassword);
+
+            String strength = showStrength(generatedPassword);
+            passwordHistory.add(generatedPassword);
+            undoStack.push(generatedPassword);
+
+            logger.info("Generated password: " + generatedPassword + " (Strength: " + strength + ")");
+            savePasswordToFile(generatedPassword, strength);
+
+        } catch (Exception ex) {
+            logger.log(Level.SEVERE, "Error generating password", ex);
+            JOptionPane.showMessageDialog(this, "An error occurred: " + ex.getMessage());
+        }
+    }
+
+    private String generatePassword(int length, String base, boolean useCustom) {
         String upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         String lower = "abcdefghijklmnopqrstuvwxyz";
         String nums = "0123456789";
@@ -164,10 +178,7 @@ public class MyPasswordApp extends JFrame implements ActionListener {
         if (numberCheck.isSelected()) all.append(nums);
         if (symbolCheck.isSelected()) all.append(syms);
 
-        if (all.length() == 0) {
-            JOptionPane.showMessageDialog(this, "Please select at least one option!", "Error", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
+        if (all.length() == 0) throw new IllegalArgumentException("Please select at least one option!");
 
         Random rand = new Random();
         StringBuilder password = new StringBuilder();
@@ -183,8 +194,33 @@ public class MyPasswordApp extends JFrame implements ActionListener {
             }
         }
 
-        passwordField.setText(password.substring(0, length));
-        showStrength(password.toString());
+        return password.substring(0, length);
+    }
+
+    private void copyToClipboard() {
+        StringSelection selection = new StringSelection(passwordField.getText());
+        Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, null);
+        JOptionPane.showMessageDialog(this, "Password copied to clipboard!");
+        logger.info("Password copied to clipboard: " + passwordField.getText());
+    }
+
+    private void undoPassword() {
+        if (!undoStack.isEmpty()) {
+            undoStack.pop();
+            if (!undoStack.isEmpty()) {
+                passwordField.setText(undoStack.peek());
+            } else {
+                passwordField.setText("");
+            }
+        }
+    }
+
+    private void showHistory() {
+        StringBuilder history = new StringBuilder("Password History:\n");
+        for (String p : passwordHistory) {
+            history.append(p).append("\n");
+        }
+        JOptionPane.showMessageDialog(this, history.toString());
     }
 
     private String randomizeWord(String base, String mixChars, Random rand) {
@@ -204,13 +240,13 @@ public class MyPasswordApp extends JFrame implements ActionListener {
         return result.toString();
     }
 
-    private void showStrength(String password) {
+    private String showStrength(String password) {
         int score = 0;
         if (password.length() >= 8) score++;
-        if (password.matches(".*[A-Z].*")) score++;
-        if (password.matches(".*[a-z].*")) score++;
-        if (password.matches(".*\\d.*")) score++;
-        if (password.matches(".*[!@#$%^&*()].*")) score++;
+        if (password.matches(".[A-Z].")) score++;
+        if (password.matches(".[a-z].")) score++;
+        if (password.matches(".\\d.")) score++;
+        if (password.matches(".[!@#$%^&()].")) score++;
 
         String message;
         Color color;
@@ -230,9 +266,63 @@ public class MyPasswordApp extends JFrame implements ActionListener {
 
         strengthLabel.setText(message);
         strengthLabel.setForeground(color);
+        return message;
+    }
+
+    private void savePasswordToFile(String password, String strength) {
+        try (FileWriter fw = new FileWriter("passwords.txt", true)) {
+            fw.write(password + " (" + strength + ")\n");
+        } catch (IOException ex) {
+            logger.log(Level.SEVERE, "Failed to save password to file", ex);
+        }
+    }
+
+    private void toggleTheme() {
+        darkTheme = !darkTheme;
+        applyTheme();
+        logger.info("Theme toggled to " + (darkTheme ? "Dark" : "Light"));
+    }
+
+    private void applyTheme() {
+        Color bg = darkTheme ? bgDark : bgLight;
+        Color fg = darkTheme ? fgDark : fgLight;
+        Color accent = darkTheme ? accentDark : accentLight;
+
+        mainPanel.setBackground(bg);
+        for (Component comp : mainPanel.getComponents()) {
+            comp.setBackground(bg);
+            comp.setForeground(fg);
+            if (comp instanceof JButton) {
+                comp.setBackground(accent);
+                comp.setForeground(fg);
+            }
+            if (comp instanceof JCheckBox) {
+                comp.setForeground(fg);
+            }
+        }
+
+        themeToggleButton.setText(darkTheme ? "🌞 Switch to Light Theme" : "🌙 Switch to Dark Theme");
+    }
+
+    private JCheckBox createCheckBox(String text) {
+        JCheckBox cb = new JCheckBox(text);
+        cb.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        cb.setSelected(true);
+        return cb;
+    }
+
+    private void setupLogger() {
+        try {
+            FileHandler handler = new FileHandler("app.log", true);
+            handler.setFormatter(new SimpleFormatter());
+            logger.addHandler(handler);
+            logger.setLevel(Level.INFO);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public static void main(String[] args) {
-        new MyPasswordApp();
+        SwingUtilities.invokeLater(MyPasswordApp::new);
     }
 }
